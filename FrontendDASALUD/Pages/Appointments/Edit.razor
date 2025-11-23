@@ -1,0 +1,190 @@
+@page "/appointments/edit/{Id:int}"
+@layout FrontendDASALUD.Layout.DashboardLayout
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject FrontendDASALUD.Services.IApiService Api
+@inject NavigationManager Navigation
+
+@using FrontendDASALUD.Models
+@using FrontendDASALUD.ViewModels
+
+<link href="css/citas.css" rel="stylesheet" />
+
+@if (!_authenticated)
+{
+    <div style="padding: 40px; text-align: center;">
+        <h2>Acceso Denegado</h2>
+        <p>Debe iniciar sesión para acceder a esta sección.</p>
+        <button class="btn-primary-sm" @onclick="@(() => Navigation.NavigateTo("/"))">Ir al Login</button>
+    </div>
+}
+else if (_loading || _model == null)
+{
+    <div style="padding: 40px; text-align: center;">
+        <p>Cargando...</p>
+    </div>
+}
+else
+{
+    <div class="header-block">
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Editar Cita Médica</h2>
+                <p class="page-subtitle">Modifique la información de la cita #@_model.IdCita.ToString("D4")</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="citas-form-card">
+        <EditForm Model="_model" OnValidSubmit="HandleEdit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Paciente</label>
+                    <InputSelect @bind-Value="_model.IdPaciente" class="form-select">
+                        <option value="0">Selecciona a un paciente</option>
+                        @foreach (var p in _model.Pacientes ?? Enumerable.Empty<SelectionItem>())
+                        {
+                            <option value="@p.Id">@p.Text</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => _model.IdPaciente" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Médico encargado</label>
+                    <InputSelect @bind-Value="_model.IdEmpleado" class="form-select">
+                        <option value="0">Selecciona a un médico</option>
+                        @foreach (var e in _model.Empleados ?? Enumerable.Empty<SelectionItem>())
+                        {
+                            <option value="@e.Id">@e.Text</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => _model.IdEmpleado" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Costo de Cita</label>
+                    <InputNumber @bind-Value="_model.Costo" class="form-input" step="0.01" min="0" />
+                    <ValidationMessage For="() => _model.Costo" />
+                    <small class="form-help">Costo por defecto: $29.00</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Fecha de la cita</label>
+                    <InputDate @bind-Value="_model.FechaCita" class="form-input" />
+                    <ValidationMessage For="() => _model.FechaCita" />
+                    <small class="form-help">Fecha actual: @_model.FechaCita.ToString("dd/MM/yyyy")</small>
+                </div>
+
+                <div class="form-group form-group-full">
+                    <label class="form-label">Estado</label>
+                    <InputSelect @bind-Value="_model.IdEstado" class="form-select">
+                        <option value="0">Selecciona un estado</option>
+                        @foreach (var s in _model.Estados ?? Enumerable.Empty<SelectionItem>())
+                        {
+                            <option value="@s.Id">@s.Text</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => _model.IdEstado" />
+                    <small class="form-help">Puede cambiar el estado de la cita según su progreso</small>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn-secondary" @onclick="Cancel">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar cambios</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private EditCitaViewModel? _model;
+    private bool _authenticated = false;
+    private bool _loading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authenticated = await Auth.IsAuthenticatedAsync();
+        if (!_authenticated)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+
+            var apiResp = await Api.GetAsync<ApiResponse<EditCitaDto>>($"api/Citas/{Id}");
+            if (apiResp?.Data != null)
+            {
+                var d = apiResp.Data;
+                _model = new EditCitaViewModel
+                {
+                    IdCita = d.IdCita,
+                    IdPaciente = d.IdPaciente,
+                    IdEmpleado = d.IdEmpleado,
+                    Costo = d.Costo <= 0 ? 29.00m : d.Costo,
+                    FechaCita = d.FechaCita,
+                    IdEstado = d.IdEstado,
+                    Pacientes = new List<SelectionItem>(),
+                    Empleados = new List<SelectionItem>(),
+                    Estados = new List<SelectionItem>()
+                };
+                await LoadCatalogsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading appointment: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadCatalogsAsync()
+    {
+        if (_model == null) return;
+        try
+        {
+            var pacientesResponse = await Api.GetAsync<ApiResponse<List<PacienteDto>>>("api/citas/patients");
+            var empleadosResponse = await Api.GetAsync<ApiResponse<List<DoctorDto>>>("api/citas/doctors");
+            var estadosResponse = await Api.GetAsync<ApiResponse<List<EstadoDto>>>("api/Citas/status");
+
+            if (pacientesResponse?.Data != null)
+                _model.Pacientes = pacientesResponse.Data.Select(p => new SelectionItem { Id = p.IdPaciente, Text = p.FullName }).ToList();
+            if (empleadosResponse?.Data != null)
+                _model.Empleados = empleadosResponse.Data.Select(e => new SelectionItem { Id = e.IdEmpleado, Text = $"{e.FullName} - {e.Especialidad}" }).ToList();
+            if (estadosResponse?.Data != null)
+                _model.Estados = estadosResponse.Data.Select(s => new SelectionItem { Id = s.IdEstado, Text = s.NombreEstado }).ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading catalogs: {ex.Message}");
+        }
+    }
+
+    private async Task HandleEdit()
+    {
+        if (_model == null) return;
+        var resp = await Api.PutRawAsync($"api/Citas/{_model.IdCita}", _model);
+        if (resp.IsSuccessStatusCode)
+        {
+            Navigation.NavigateTo("/appointments");
+        }
+    }
+
+    private void Cancel() => Navigation.NavigateTo("/appointments");
+}

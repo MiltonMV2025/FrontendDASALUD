@@ -1,0 +1,101 @@
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<header class="dashboard-header">
+    <div class="header-brand">
+        <img src="images/Logo Navbar.svg" alt="DASALUD Clínica" class="brand-logo" style="width: 200px; height: auto;" />
+    </div>
+
+    @if (_userData != null)
+    {
+        <div class="user-info">
+            <div class="user-profile-trigger" @onclick="ToggleDropdown">
+                <span class="user-name">@_userData.FullName</span>
+                <div class="user-avatar">@GetInitials()</div>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+
+            @if (_showDropdown)
+            {
+                <div class="user-dropdown">
+                    <div class="dropdown-header">
+                        <div class="dropdown-avatar">@GetInitials()</div>
+                        <div class="dropdown-user-info">
+                            <h4>@_userData.FullName</h4>
+                            <p>@_userData.Username</p>
+                        </div>
+                    </div>
+                    <div class="dropdown-menu">
+                        <button type="button" class="dropdown-item" @onclick="HandleLogout" @onclick:stopPropagation="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                                <polyline points="16 17 21 12 16 7"></polyline>
+                                <line x1="21" y1="12" x2="9" y2="12"></line>
+                            </svg>
+                            <span>Cerrar Sesión</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="dropdown-backdrop" @onclick="CloseDropdown"></div>
+            }
+        </div>
+    }
+</header>
+
+@code {
+    private FrontendDASALUD.Models.AuthData? _userData;
+    private bool _showDropdown = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userData = await Auth.GetUserDataAsync();
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _showDropdown = false;
+        StateHasChanged();
+    }
+
+    private string GetInitials()
+    {
+        if (_userData == null) return "";
+        
+        var initials = "";
+        if (!string.IsNullOrEmpty(_userData.Nombres))
+            initials += _userData.Nombres[0];
+        if (!string.IsNullOrEmpty(_userData.Apellidos))
+            initials += _userData.Apellidos[0];
+        
+        return initials.ToUpperInvariant();
+    }
+
+    private void ToggleDropdown()
+    {
+        _showDropdown = !_showDropdown;
+    }
+
+    private void CloseDropdown()
+    {
+        _showDropdown = false;
+    }
+
+    private async Task HandleLogout()
+    {
+        _showDropdown = false;
+        await Auth.LogoutAsync();
+        await JS.InvokeVoidAsync("Alerts.info", "Sesión cerrada", "Has cerrado sesión correctamente.");
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

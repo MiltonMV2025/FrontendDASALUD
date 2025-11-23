@@ -1,0 +1,73 @@
+@page "/"
+@layout FrontendDASALUD.Layout.AccountLayout
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@using FrontendDASALUD.ViewModels
+@using FrontendDASALUD.Models
+
+<link href="css/account.css" rel="stylesheet" />
+
+<div class="account-wrap">
+    <div class="account-container">
+        <div class="brand-side">
+            <img src="images/Logo.svg" alt="DASALUD Clínica" class="brand-logo" />
+
+            <p class="brand-tagline">Todo tu bienestar en un solo lugar.</p>
+            <p class="brand-subtag">Escuchamos. Cuidamos. Sanamos.</p>
+        </div>
+
+        <div class="account-box">
+            <h2>Iniciar sesión</h2>
+            <p class="account-subtitle">
+                Ingrese su usuario para iniciar sesión y acceder a todos los servicios de DASALUD.
+            </p>
+
+            <EditForm Model="_model" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="mb-3">
+                    <label class="form-label">Usuario</label>
+                    <InputText @bind-Value="_model.Username" class="form-control" />
+                    <ValidationMessage For="() => _model.Username" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Contraseña</label>
+                    <InputText @bind-Value="_model.Password" type="password" class="form-control" />
+                    <ValidationMessage For="() => _model.Password" />
+                </div>
+
+                <button type="submit" class="btn btn-primary-custom w-100">Iniciar sesión</button>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <div class="text-danger mt-2">@_errorMessage</div>
+                }
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    private FrontendDASALUD.ViewModels.LoginViewModel _model = new();
+    private string? _errorMessage;
+
+    private async Task HandleLogin()
+    {
+        _errorMessage = null;
+        var ok = await Auth.LoginAsync(new FrontendDASALUD.Models.UserCredentials { Username = _model.Username, Password = _model.Password });
+        if (ok)
+        {
+            await JS.InvokeVoidAsync("Alerts.success", "Bienvenido", "Inicio de sesión exitoso.");
+            Navigation.NavigateTo("/dashboard", true);
+        }
+        else
+        {
+            _errorMessage = "Usuario o contraseña incorrectos.";
+            await JS.InvokeVoidAsync("Alerts.error", "Error", _errorMessage);
+        }
+    }
+}

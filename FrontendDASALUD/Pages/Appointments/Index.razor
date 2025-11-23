@@ -1,0 +1,215 @@
+@page "/appointments"
+@layout FrontendDASALUD.Layout.DashboardLayout
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject FrontendDASALUD.Services.IApiService Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@using FrontendDASALUD.Models
+
+<link href="css/citas.css" rel="stylesheet" />
+
+<div class="header-block">
+    <div class="page-header">
+        <div>
+            <h2 class="page-title">Citas Médicas Registradas</h2>
+            <p class="page-subtitle">Se muestran @(_pageSize) registros por página.</p>
+        </div>
+        <button class="btn-primary-sm" @onclick="Create">Añadir Cita</button>
+    </div>
+</div>
+
+<div class="table-card">
+    @if (_loading)
+    {
+        <div class="table-loading">Cargando...</div>
+    }
+
+    <div class="table-wrapper">
+        <table class="appointments">
+            <thead>
+                <tr>
+                    <th style="width:120px;">ID Consulta</th>
+                    <th>Atendido por</th>
+                    <th>Paciente</th>
+                    <th>Fecha</th>
+                    <th>Costo</th>
+                    <th>Estado</th>
+                    <th class="col-actions">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_citas?.Any() == true)
+                {
+                    foreach (var c in _citas)
+                    {
+                        var estadoClass = c.Estado?.ToLowerInvariant() switch
+                        {
+                            "finalizada" => "badge-finalizada",
+                            "confirmada" => "badge-finalizada",
+                            "completada" => "badge-finalizada",
+                            "pendiente" => "badge-pendiente",
+                            "en progreso" => "badge-reprogramada",
+                            "reprogramada" => "badge-reprogramada",
+                            _ => "badge-finalizada"
+                        };
+                        <tr id="cita-row-@c.Id">
+                            <td>@c.IdConsulta</td>
+                            <td>@c.AtendidoPor</td>
+                            <td>@c.Paciente</td>
+                            <td>@c.Fecha.ToString("dd/MM/yyyy")</td>
+                            <td class="money">@string.Format(new System.Globalization.CultureInfo("en-US"), "{0:C}", c.Costo)</td>
+                            <td>
+                                <span class="badge @estadoClass">@c.Estado</span>
+                            </td>
+                            <td class="col-actions">
+                                <div class="actions">
+                                    <button class="icon-btn icon-blue" title="Editar" aria-label="Editar" @onclick="@(()=> Edit(c.Id))">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 20h9"></path>
+                                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+                                        </svg>
+                                    </button>
+
+                                    <button class="icon-btn icon-red" title="Eliminar" aria-label="Eliminar" @onclick="@(async ()=> await ConfirmDelete(c))" disabled="@(_deletingId == c.Id)">
+                                        @if (_deletingId == c.Id)
+                                        {
+                                            <svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#c0392b" stroke-width="2" fill="none"/><path d="M8 12h8" stroke="#c0392b" stroke-width="2"/></svg>
+                                        }
+                                        else
+                                        {
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <polyline points="3 6 5 6 21 6"></polyline>
+                                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                                                <path d="M10 11v6M14 11v6"></path>
+                                                <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+                                            </svg>
+                                        }
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="7" style="padding:24px; text-align:center; color:#6E7C87;">No hay registros para mostrar.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-bar">
+        <span class="label">Página @(_page) de @_totalPages</span>
+        <div class="pager">
+            <button class="page" @onclick="@(async () => await ChangePage(_page - 1))" disabled="@(_page <= 1)">&lt;</button>
+            @for (int p = 1; p <= _totalPages; p++)
+            {
+                var pageNum = p;
+                <button class="page @(pageNum == _page ? "active" : "")" @onclick="@(async () => await ChangePage(pageNum))">@pageNum</button>
+            }
+            <button class="page" @onclick="@(async () => await ChangePage(_page + 1))" disabled="@(_page >= _totalPages)">&gt;</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<CitaDto>? _citas;
+    private int _page = 1;
+    private int _pageSize = 10;
+    private int _totalPages = 1;
+    private bool _loading = false;
+    private int? _deletingId = null;
+    private bool _authenticated = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authenticated = await Auth.IsAuthenticatedAsync();
+        if (!_authenticated)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        await LoadPageAsync(_page);
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        try
+        {
+            _loading = true;
+            _page = Math.Max(1, page);
+            _pageSize = 10;
+            var res = await Api.GetAsync<ApiResponse<PagedResult<CitaDto>>>($"api/Citas?page=" + _page + "&pageSize=" + _pageSize);
+            if (res?.Data?.Items != null)
+            {
+                _citas = res.Data.Items;
+                _page = res.Data.Page;
+                _pageSize = res.Data.PageSize;
+                _totalPages = res.Data.TotalPages;
+            }
+            else
+            {
+                _citas = new List<CitaDto>();
+                _totalPages = 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading appointments: {ex.Message}");
+            _citas = new List<CitaDto>();
+            _totalPages = 1;
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "No se pudieron cargar las citas.");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Create() => Navigation.NavigateTo("/appointments/create");
+    private void Edit(int id) => Navigation.NavigateTo("/appointments/edit/" + id);
+
+    private async Task ConfirmDelete(CitaDto c)
+    {
+        var ok = await JS.InvokeAsync<bool>("Alerts.confirm", "¿Eliminar cita?", $"Consulta {c.IdConsulta} - {c.Paciente} ({c.Fecha:dd/MM/yyyy})");
+        if (!ok) return;
+        _deletingId = c.Id;
+        StateHasChanged();
+        await Delete(c.Id);
+        _deletingId = null;
+        StateHasChanged();
+    }
+
+    private async Task Delete(int id)
+    {
+        try
+        {
+            var resp = await Api.DeleteAsync("api/Citas/" + id);
+            if (resp.IsSuccessStatusCode)
+            {
+                _citas = _citas?.Where(x => x.Id != id).ToList();
+                await JS.InvokeVoidAsync("Alerts.success", "Eliminada", "La cita se eliminó correctamente.");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("Alerts.error", "Error", "No se pudo eliminar la cita.");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error deleting appointment: {ex.Message}");
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "Ocurrió un error eliminando la cita.");
+        }
+    }
+
+    private async Task ChangePage(int p)
+    {
+        if (p < 1) p = 1;
+        if (p > _totalPages) p = _totalPages;
+        if (p == _page) return;
+        await LoadPageAsync(p);
+    }
+}

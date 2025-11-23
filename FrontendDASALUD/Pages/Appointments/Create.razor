@@ -1,0 +1,162 @@
+@page "/appointments/create"
+@layout FrontendDASALUD.Layout.DashboardLayout
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject FrontendDASALUD.Services.IApiService Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@using FrontendDASALUD.Models
+@using FrontendDASALUD.ViewModels
+
+<link href="css/citas.css" rel="stylesheet" />
+
+    <div class="header-block">
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Nueva Cita Médica</h2>
+                <p class="page-subtitle">Registre una nueva cita médica en el sistema.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="citas-form-card">
+        @if (_loading)
+        {
+            <div style="padding: 20px; text-align: center;">
+                <p>Cargando catálogos...</p>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="_model" OnValidSubmit="HandleCreate">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Paciente</label>
+                        <InputSelect @bind-Value="_model.IdPaciente" class="form-select">
+                            <option value="0">Selecciona a un paciente</option>
+                            @foreach (var p in _model.Pacientes ?? Enumerable.Empty<SelectionItem>())
+                            {
+                                <option value="@p.Id">@p.Text</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => _model.IdPaciente" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Médico encargado</label>
+                        <InputSelect @bind-Value="_model.IdEmpleado" class="form-select">
+                            <option value="0">Selecciona a un médico</option>
+                            @foreach (var e in _model.Empleados ?? Enumerable.Empty<SelectionItem>())
+                            {
+                                <option value="@e.Id">@e.Text</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => _model.IdEmpleado" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Costo de Cita</label>
+                        <InputNumber @bind-Value="_model.Costo" class="form-input" step="0.01" min="0" />
+                        <ValidationMessage For="() => _model.Costo" />
+                        <small class="form-help">Costo por defecto: $29.00</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Fecha de la cita</label>
+                        <InputDate @bind-Value="_model.FechaCita" class="form-input" min="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                        <ValidationMessage For="() => _model.FechaCita" />
+                        <small class="form-help">La fecha debe ser hoy o posterior</small>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" @onclick="Cancel">Cancelar</button>
+                    <button type="submit" class="btn-primary">Crear cita</button>
+                </div>
+            </EditForm>
+        }
+    </div>
+
+
+@code {
+    private CreateCitaViewModel _model = new();
+    private bool _authenticated = false;
+    private bool _loading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authenticated = await Auth.IsAuthenticatedAsync();
+        if (!_authenticated)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        _model.Costo = 29.00m;
+        _model.FechaCita = DateTime.Today;
+
+        await LoadSelectionsAsync();
+    }
+
+    private async Task LoadSelectionsAsync()
+    {
+        try
+        {
+            _loading = true;
+            
+            var pacientesResponse = await Api.GetAsync<ApiResponse<List<PacienteDto>>>("api/citas/patients");
+            var empleadosResponse = await Api.GetAsync<ApiResponse<List<DoctorDto>>>("api/citas/doctors");
+            
+            if (pacientesResponse?.Data != null)
+            {
+                _model.Pacientes = pacientesResponse.Data
+                    .Select(p => new SelectionItem { Id = p.IdPaciente, Text = p.FullName })
+                    .ToList();
+            }
+            else
+            {
+                _model.Pacientes = new List<SelectionItem>();
+            }
+            
+            if (empleadosResponse?.Data != null)
+            {
+                _model.Empleados = empleadosResponse.Data
+                    .Select(e => new SelectionItem { Id = e.IdEmpleado, Text = $"{e.FullName} - {e.Especialidad}" })
+                    .ToList();
+            }
+            else
+            {
+                _model.Empleados = new List<SelectionItem>();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading catalogs: {ex.Message}");
+            _model.Pacientes = new List<SelectionItem>();
+            _model.Empleados = new List<SelectionItem>();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task HandleCreate()
+    {
+        var resp = await Api.PostRawAsync("api/Citas", _model);
+        if (resp.IsSuccessStatusCode)
+        {
+            await JS.InvokeVoidAsync("Alerts.success", "Cita creada", "La cita se registró correctamente.");
+            Navigation.NavigateTo("/appointments");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "No se pudo crear la cita.");
+        }
+    }
+
+    private void Cancel() => Navigation.NavigateTo("/appointments");
+}

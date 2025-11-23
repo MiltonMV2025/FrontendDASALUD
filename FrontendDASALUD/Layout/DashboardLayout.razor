@@ -1,0 +1,15 @@
+@inherits LayoutComponentBase
+
+<link href="css/dashboard.css" rel="stylesheet" />
+
+<FrontendDASALUD.Components.DashboardHeader />
+
+<div class="dashboard-container">
+    <div class="dashboard-main-layout">
+        <FrontendDASALUD.Components.DashboardSidebar />
+        
+        <main class="dashboard-content">
+            @Body
+        </main>
+    </div>
+</div>

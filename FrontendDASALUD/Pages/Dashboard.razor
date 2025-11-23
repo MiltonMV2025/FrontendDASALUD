@@ -1,0 +1,133 @@
+@page "/dashboard"
+@layout FrontendDASALUD.Layout.DashboardLayout
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject FrontendDASALUD.Services.IApiService Api
+@inject IJSRuntime JS
+
+<link href="css/dashboard.css" rel="stylesheet" />
+
+@if (!_authenticated)
+{
+    <div style="padding:40px; text-align:center;">
+        <h2>Acceso Denegado</h2>
+        <p>Debe iniciar sesión para acceder al panel.</p>
+    </div>
+}
+else if (_loading)
+{
+    <div style="padding:40px; text-align:center;">Cargando datos...</div>
+}
+else if (_summary is null)
+{
+    <div style="padding:40px; text-align:center;">No se pudo cargar el resumen.</div>
+}
+else
+{
+    <div class="cards-grid">
+        <div class="stat-card">
+            <h1 class="stat-number">@_summary.PacientesAtendidos</h1>
+            <p class="stat-label">Pacientes Atendidos</p>
+        </div>
+        <div class="stat-card">
+            <h1 class="stat-number">@_summary.ConsultasPendientes</h1>
+            <p class="stat-label">Consultas Pendientes</p>
+        </div>
+    </div>
+
+    <div class="cards-grid">
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Total de consultas atendidas</h3>
+                <p class="chart-subtitle">Seguimiento general del número de consultas atendidas en el sistema.</p>
+            </div>
+            <div class="doughnut-container">
+                <canvas id="totalConsultasChart"></canvas>
+                <div class="doughnut-center">
+                    <h2 class="doughnut-number">@_summary.TotalConsultas</h2>
+                    <p class="doughnut-label">Consultas</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Tendencia de Consultas por Fecha</h3>
+                <p class="chart-subtitle">Muestra las fechas más concurridas y los periodos de mayor demanda de atención médica.</p>
+            </div>
+            <div class="chart-container">
+                <canvas id="consultasPorFechaChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="cards-grid">
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Concurrencia de Consultas por Especialidad</h3>
+                <p class="chart-subtitle">Visualiza las fechas con mayor número de consultas agrupadas por especialidad médica.</p>
+            </div>
+            <div class="chart-container">
+                <canvas id="concurrenciaChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Consultas por Especialidad</h3>
+                <p class="chart-subtitle">Distribución del número de consultas según el tipo de especialidad médica.</p>
+            </div>
+            <div class="chart-container">
+                <canvas id="consultasPorEspecialidadChart"></canvas>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _authenticated;
+    private bool _loading = true;
+    private DashboardSummaryDto? _summary;
+    private bool _chartsRendered = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authenticated = await Auth.IsAuthenticatedAsync();
+        if (!_authenticated) return;
+
+        try
+        {
+            var resp = await Api.GetAsync<ApiResponse<DashboardSummaryDto>>("api/Dashboard/summary");
+            _summary = resp?.Data;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("Error cargando dashboard: " + ex.Message);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_chartsRendered && _authenticated && !_loading && _summary != null)
+        {
+            var meses = _summary.ConsultasPorMes.Select(x=>x.Mes).ToArray();
+            var cantidadesMes = _summary.ConsultasPorMes.Select(x=>x.Cantidad).ToArray();
+            var codigosEsp = _summary.ConsultasPorEspecialidad.Select(x=>x.Codigo).ToArray();
+            var cantidadesEsp = _summary.ConsultasPorEspecialidad.Select(x=>x.Cantidad).ToArray();
+
+            await JS.InvokeVoidAsync("DashboardCharts.renderDoughnut", "totalConsultasChart", _summary.TotalConsultas, _summary.TotalConsultas + 10);
+            await JS.InvokeVoidAsync("DashboardCharts.renderBar", "consultasPorFechaChart", meses, cantidadesMes);
+            await JS.InvokeVoidAsync("DashboardCharts.renderLineMulti", "concurrenciaChart", new []{"Jun","Jul","Ago","Sep","Oct","Nov"}, new []{
+                new { label = "Especialidad 1", data = new[]{5,4,6,5,12,2}, color = "#005792" },
+                new { label = "Especialidad 2", data = new[]{3,2,4,3,5,1}, color = "#0071BE" },
+                new { label = "Especialidad 3", data = new[]{2,2,2,2,3,1}, color = "#5BA1D0" }
+            });
+            await JS.InvokeVoidAsync("DashboardCharts.renderBar", "consultasPorEspecialidadChart", codigosEsp, cantidadesEsp);
+            _chartsRendered = true;
+        }
+    }
+}

@@ -1,0 +1,36 @@
+@using Microsoft.AspNetCore.Components.Routing
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<aside class="dashboard-sidebar">
+    <div class="sidebar-section">
+        <div class="sidebar-title">Administración</div>
+        <ul class="sidebar-menu">
+            <li>
+                <NavLink href="/dashboard" class="sidebar-link" activeclassname="active" Match="NavLinkMatch.All">Reportes</NavLink>
+            </li>
+            <li>
+                <NavLink href="/appointments" class="sidebar-link" activeclassname="active" Match="NavLinkMatch.Prefix">Citas</NavLink>
+            </li>
+            <li><a href="#" onclick="alert('Próximamente')">Empleados</a></li>
+            <li><a href="#" onclick="alert('Próximamente')">Pacientes</a></li>
+        </ul>
+    </div>
+</aside>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
+}
