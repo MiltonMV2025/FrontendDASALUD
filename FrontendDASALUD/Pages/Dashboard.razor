@@ -3,6 +3,7 @@
 @inject FrontendDASALUD.Services.IAuthService Auth
 @inject FrontendDASALUD.Services.IApiService Api
 @inject IJSRuntime JS
+@using System.Globalization
 
 <link href="css/dashboard.css" rel="stylesheet" />
 
@@ -15,11 +16,11 @@
 }
 else if (_loading)
 {
-    <div style="padding:40px; text-align:center;">Cargando datos...</div>
+    <div style="padding:40px; text-align:center;">Cargando datos del sistema...</div>
 }
 else if (_summary is null)
 {
-    <div style="padding:40px; text-align:center;">No se pudo cargar el resumen.</div>
+    <div style="padding:40px; text-align:center;">No se pudo cargar el resumen. Intente nuevamente.</div>
 }
 else
 {
@@ -28,9 +29,15 @@ else
             <h1 class="stat-number">@_summary.PacientesAtendidos</h1>
             <p class="stat-label">Pacientes Atendidos</p>
         </div>
+
         <div class="stat-card">
             <h1 class="stat-number">@_summary.ConsultasPendientes</h1>
             <p class="stat-label">Consultas Pendientes</p>
+        </div>
+
+        <div class="stat-card">
+            <h1 class="stat-number">@_summary.TotalIngresos.ToString("C", new CultureInfo("es-SV"))</h1>
+            <p class="stat-label">Ingresos Totales (Completados)</p>
         </div>
     </div>
 
@@ -38,7 +45,7 @@ else
         <div class="chart-card">
             <div class="chart-header">
                 <h3 class="chart-title">Total de consultas atendidas</h3>
-                <p class="chart-subtitle">Seguimiento general del número de consultas atendidas en el sistema.</p>
+                <p class="chart-subtitle">Proporción de consultas activas en el sistema.</p>
             </div>
             <div class="doughnut-container">
                 <canvas id="totalConsultasChart"></canvas>
@@ -52,7 +59,7 @@ else
         <div class="chart-card">
             <div class="chart-header">
                 <h3 class="chart-title">Tendencia de Consultas por Fecha</h3>
-                <p class="chart-subtitle">Muestra las fechas más concurridas y los periodos de mayor demanda de atención médica.</p>
+                <p class="chart-subtitle">Volumen de atención médica en los últimos 6 meses.</p>
             </div>
             <div class="chart-container">
                 <canvas id="consultasPorFechaChart"></canvas>
@@ -63,8 +70,8 @@ else
     <div class="cards-grid">
         <div class="chart-card">
             <div class="chart-header">
-                <h3 class="chart-title">Concurrencia de Consultas por Especialidad</h3>
-                <p class="chart-subtitle">Visualiza las fechas con mayor número de consultas agrupadas por especialidad médica.</p>
+                <h3 class="chart-title">Concurrencia por Especialidad</h3>
+                <p class="chart-subtitle">Comparativa mensual de demanda entre especialidades.</p>
             </div>
             <div class="chart-container">
                 <canvas id="concurrenciaChart"></canvas>
@@ -73,8 +80,8 @@ else
 
         <div class="chart-card">
             <div class="chart-header">
-                <h3 class="chart-title">Consultas por Especialidad</h3>
-                <p class="chart-subtitle">Distribución del número de consultas según el tipo de especialidad médica.</p>
+                <h3 class="chart-title">Top Especialidades</h3>
+                <p class="chart-subtitle">Distribución total acumulada por área médica.</p>
             </div>
             <div class="chart-container">
                 <canvas id="consultasPorEspecialidadChart"></canvas>
@@ -106,27 +113,46 @@ else
         finally
         {
             _loading = false;
+            // Forzamos renderizado para que aparezca el HTML antes de pintar gráficas
             StateHasChanged();
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Solo renderizamos gráficas si tenemos datos y NO se han renderizado aún
         if (!_chartsRendered && _authenticated && !_loading && _summary != null)
         {
-            var meses = _summary.ConsultasPorMes.Select(x=>x.Mes).ToArray();
-            var cantidadesMes = _summary.ConsultasPorMes.Select(x=>x.Cantidad).ToArray();
-            var codigosEsp = _summary.ConsultasPorEspecialidad.Select(x=>x.Codigo).ToArray();
-            var cantidadesEsp = _summary.ConsultasPorEspecialidad.Select(x=>x.Cantidad).ToArray();
+            // 1. Gráfica DONA (Total)
+            // Pasamos el total como valor y el mismo total como 'meta' para que se vea llena o proporcional
+            await JS.InvokeVoidAsync("DashboardCharts.renderDoughnut", "totalConsultasChart", _summary.TotalConsultas, _summary.TotalConsultas);
 
-            await JS.InvokeVoidAsync("DashboardCharts.renderDoughnut", "totalConsultasChart", _summary.TotalConsultas, _summary.TotalConsultas + 10);
+            // 2. Gráfica BARRAS (Tendencia Mensual)
+            var meses = _summary.ConsultasPorMes.Select(x => x.Mes).ToArray();
+            var cantidadesMes = _summary.ConsultasPorMes.Select(x => x.Cantidad).ToArray();
             await JS.InvokeVoidAsync("DashboardCharts.renderBar", "consultasPorFechaChart", meses, cantidadesMes);
-            await JS.InvokeVoidAsync("DashboardCharts.renderLineMulti", "concurrenciaChart", new []{"Jun","Jul","Ago","Sep","Oct","Nov"}, new []{
-                new { label = "Especialidad 1", data = new[]{5,4,6,5,12,2}, color = "#005792" },
-                new { label = "Especialidad 2", data = new[]{3,2,4,3,5,1}, color = "#0071BE" },
-                new { label = "Especialidad 3", data = new[]{2,2,2,2,3,1}, color = "#5BA1D0" }
-            });
+
+            // 3. Gráfica LÍNEAS (Concurrencia - DATOS REALES)
+            // Generamos las etiquetas de los meses dinámicamente para que coincidan con el Backend
+            var culture = new CultureInfo("es-ES");
+            var labelsMeses = Enumerable.Range(0, 6)
+                .Select(i => DateTime.Now.AddMonths(-5 + i).ToString("MMM", culture))
+                .ToArray();
+
+            // Transformamos la data compleja para que JS la entienda
+            var datasetsConcurrencia = _summary.DataConcurrencia.Select(d => new
+            {
+                label = d.Especialidad,
+                data = d.Data,
+                color = d.Color
+            }).ToArray();
+
+            await JS.InvokeVoidAsync("DashboardCharts.renderLineMulti", "concurrenciaChart", labelsMeses, datasetsConcurrencia);
+
+            var codigosEsp = _summary.ConsultasPorEspecialidad.Select(x => x.Codigo).ToArray();
+            var cantidadesEsp = _summary.ConsultasPorEspecialidad.Select(x => x.Cantidad).ToArray();
             await JS.InvokeVoidAsync("DashboardCharts.renderBar", "consultasPorEspecialidadChart", codigosEsp, cantidadesEsp);
+
             _chartsRendered = true;
         }
     }
