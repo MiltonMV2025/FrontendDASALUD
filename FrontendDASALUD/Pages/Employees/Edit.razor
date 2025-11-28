@@ -1,0 +1,226 @@
+﻿@page "/employees/edit/{Id:int}"
+@layout FrontendDASALUD.Layout.DashboardLayout
+
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject FrontendDASALUD.Services.IApiService Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@using FrontendDASALUD.Models
+@using System.ComponentModel.DataAnnotations
+@using System.Reflection
+
+<link href="css/citas.css" rel="stylesheet" />
+
+@if (!_authenticated)
+{
+    <div style="padding:40px; text-align:center;">
+        <h2>Acceso denegado</h2>
+            <button class="btn-primary-sm" @onclick="@(() => Navigation.NavigateTo("/"))">Ir al Login</button>
+</div
+}
+else if (_loading || _model == null)
+{
+    <div style="padding:40px; text-align:center;">
+        <p>Cargando...</p>
+    </div>
+}
+else
+{
+    <div class="header-block">
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Editar Empleado</h2>
+                <p class="page-subtitle">Empleado #@_model.IdEmpleado</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="citas-form-card">
+        <EditForm Model="_model" OnValidSubmit="HandleEdit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="form-grid">
+
+                <div class="form-group">
+                    <label class="form-label">Usuario</label>
+                    <InputText class="form-input" @bind-Value="_model.Usuario" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <InputText type="password" class="form-input" @bind-Value="_model.Password" />
+                    <small class="form-help">Déjala vacía para mantener la actual</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Nombres</label>
+                    <InputText class="form-input" @bind-Value="_model.Nombres" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Apellidos</label>
+                    <InputText class="form-input" @bind-Value="_model.Apellidos" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Correo (opcional)</label>
+                    <InputText class="form-input" @bind-Value="_model.Correo" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">DUI</label>
+                    <InputText class="form-input" @bind-Value="_model.DUI" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Teléfono</label>
+                    <InputText class="form-input" @bind-Value="_model.Telefono" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Dirección (opcional)</label>
+                    <InputText class="form-input" @bind-Value="_model.Direccion" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Rol</label>
+                    <InputSelect class="form-select" @bind-Value="_model.IdRol">
+                        <option value="0">Selecciona un rol</option>
+                        @foreach (var r in _roles)
+                        {
+                            <option value="@r.Id">@r.Text</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Especialidad</label>
+                    <InputSelect class="form-select" @bind-Value="_model.IdEspecialidad">
+                        <option value="0">Selecciona una especialidad</option>
+                        @foreach (var s in _especialidades)
+                        {
+                            <option value="@s.Id">@s.Text</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="form-group form-group-full">
+                    <label class="form-label">
+                        <InputCheckbox @bind-Value="_model.Activo" /> Activo
+                    </label>
+                </div>
+
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn-secondary" @onclick="Cancel">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar cambios</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _authenticated;
+    private bool _loading = true;
+
+    private EditEmpleadoDto? _model;
+
+    private List<SelectionItem> _roles = new();
+    private List<SelectionItem> _especialidades = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authenticated = await Auth.IsAuthenticatedAsync();
+        if (!_authenticated)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        await LoadCombosAsync();
+        await LoadEmpleadoAsync();
+        _loading = false;
+    }
+
+    private async Task LoadCombosAsync()
+    {
+        // Usar los mismos catálogos fijos que en creación
+        _roles = new List<SelectionItem>
+        {
+            new SelectionItem { Id = 1, Text = "Administrador" },
+            new SelectionItem { Id = 2, Text = "Médico" },
+            new SelectionItem { Id = 3, Text = "Enfermero" },
+            new SelectionItem { Id = 4, Text = "Recepcionista" }
+        };
+
+        _especialidades = new List<SelectionItem>
+        {
+            new SelectionItem { Id = 1, Text = "Medicina General" },
+            new SelectionItem { Id = 2, Text = "Pediatría" },
+            new SelectionItem { Id = 3, Text = "Cardiología" },
+            new SelectionItem { Id = 4, Text = "Traumatologia" },
+            new SelectionItem { Id = 5, Text = "Administracion" },
+        };
+    }
+
+    private async Task LoadEmpleadoAsync()
+{
+    try
+    {
+        var resp = await Api.GetAsync<ApiResponse<EditEmpleadoDto>>($"api/Empleados/{Id}");
+        if (resp?.Data != null)
+        {
+            _model = resp.Data;
+            // Los combos se bindearán automáticamente con IdRol e IdEspecialidad
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "No se encontró el empleado.");
+            Navigation.NavigateTo("/employees");
+        }
+    }
+    catch (Exception ex)
+    {
+        System.Diagnostics.Debug.WriteLine($"Error loading empleado: {ex.Message}");
+        await JS.InvokeVoidAsync("Alerts.error", "Error", "Ocurrió un error cargando el empleado.");
+        Navigation.NavigateTo("/employees");
+    }
+}
+
+    private async Task HandleEdit()
+    {
+        if (_model == null) return;
+
+        try
+        {
+            var resp = await Api.PutRawAsync($"api/Empleados/{_model.IdEmpleado}", _model);
+            if (resp.IsSuccessStatusCode)
+            {
+                await JS.InvokeVoidAsync("Alerts.success", "Actualizado", "Los cambios se guardaron correctamente.");
+                Navigation.NavigateTo("/employees");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("Alerts.error", "Error", "No se pudieron guardar los cambios.");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error updating empleado: {ex.Message}");
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "Ocurrió un error guardando los cambios.");
+        }
+    }
+
+    private void Cancel() => Navigation.NavigateTo("/employees");
+
+    public class SelectionItem
+    {
+        public int Id { get; set; }
+        public string Text { get; set; } = string.Empty;
+    }
+}
