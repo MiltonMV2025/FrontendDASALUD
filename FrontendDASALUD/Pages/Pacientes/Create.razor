@@ -1,0 +1,139 @@
+﻿@page "/pacientes/create"
+@layout FrontendDASALUD.Layout.DashboardLayout
+
+@using FrontendDASALUD.ViewModels
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject FrontendDASALUD.Services.IApiService Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<link href="css/citas.css" rel="stylesheet" />
+
+@if (!_authenticated)
+{
+    <div style="padding: 40px; text-align: center;">
+        <h2>Acceso denegado</h2>
+        <p>Debe iniciar sesión para acceder a esta sección.</p>
+    </div>
+}
+else
+{
+    <div class="header-block">
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Nuevo Paciente</h2>
+                <p class="page-subtitle">Registra los datos generales del paciente.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="citas-form-card">
+        <EditForm Model="_model" OnValidSubmit="HandleCreate">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Nombres</label>
+                    <InputText @bind-Value="_model.Nombres" class="form-input" />
+                    <ValidationMessage For="() => _model.Nombres" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Apellidos</label>
+                    <InputText @bind-Value="_model.Apellidos" class="form-input" />
+                    <ValidationMessage For="() => _model.Apellidos" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">DUI</label>
+                    <InputText @bind-Value="_model.Dui" class="form-input" />
+                    <ValidationMessage For="() => _model.Dui" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Dirección</label>
+                    <InputText @bind-Value="_model.Direccion" class="form-input" />
+                    <ValidationMessage For="() => _model.Direccion" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Correo</label>
+                    <InputText @bind-Value="_model.Correo" class="form-input" />
+                    <ValidationMessage For="() => _model.Correo" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Teléfono</label>
+                    <InputText @bind-Value="_model.Telefono" class="form-input" />
+                    <ValidationMessage For="() => _model.Telefono" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Tipo de sangre</label>
+                    <InputText @bind-Value="_model.TipoSangre" class="form-input" />
+                    <ValidationMessage For="() => _model.TipoSangre" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Peso (kg)</label>
+                    <InputNumber @bind-Value="_model.Peso" class="form-input" />
+                    <ValidationMessage For="() => _model.Peso" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Altura (cm)</label>
+                    <InputNumber @bind-Value="_model.Altura" class="form-input" />
+                    <ValidationMessage For="() => _model.Altura" />
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">Guardar</button>
+                <button type="button" class="btn-secondary" @onclick="Cancel">Cancelar</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    private bool _authenticated = false;
+    private CreatePacienteViewModel _model = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authenticated = await Auth.IsAuthenticatedAsync();
+        if (!_authenticated)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+    }
+
+    private async Task HandleCreate()
+    {
+        try
+        {
+            var resp = await Api.PostRawAsync("api/pacientes", _model);
+            if (resp.IsSuccessStatusCode)
+            {
+                await JS.InvokeVoidAsync("Alerts.success", "Paciente creado", "El paciente se registró correctamente.");
+                Navigation.NavigateTo("/pacientes");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("Alerts.error", "Error", "No se pudo crear el paciente.");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error creando paciente: {ex.Message}");
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "Ocurrió un error al crear el paciente.");
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/pacientes");
+    }
+}

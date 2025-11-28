@@ -1,0 +1,239 @@
+﻿@page "/employees"
+@layout FrontendDASALUD.Layout.DashboardLayout
+@inject FrontendDASALUD.Services.IAuthService Auth
+@inject FrontendDASALUD.Services.IApiService Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@using FrontendDASALUD.Models
+
+<link href="css/citas.css" rel="stylesheet" />
+
+<div class="header-block">
+    <div class="page-header">
+        <div>
+            <h2 class="page-title">Empleados Registrados</h2>
+            <p class="page-subtitle">Se muestran @(_pageSize) registros por página.</p>
+        </div>
+        <button class="btn-primary-sm" @onclick="Create">Añadir Empleado</button>
+    </div>
+</div>
+
+<div class="table-card">
+    @if (_loading)
+    {
+        <div class="table-loading">Cargando...</div>
+    }
+
+    <div class="table-wrapper">
+        <table class="appointments">
+            <thead>
+                <tr>
+                    <th style="width:100px;">ID</th>
+                    <th>Usuario</th>
+                    <th>Nombre</th>
+                    <th>DUI</th>
+                    <th>Rol</th>
+                    <th>Especialidad</th>
+                    <th>Estado</th>
+                    <th class="col-actions">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_empleados?.Any() == true)
+                {
+                    foreach (var e in _empleados)
+                    {
+                        var estadoClass = e.Activo
+                        ? "badge-finalizada"
+                        : "badge-reprogramada";
+
+                        <tr id="empleado-row-@e.IdEmpleado">
+                            <td>@e.IdEmpleado</td>
+                            <td>@e.Usuario</td>
+                            <td>@e.FullName</td>
+                            <td>@e.DUI</td>
+                            <td>@e.Rol</td>
+                            <td>@e.Especialidad</td>
+                            <td>
+                                <span class="badge @estadoClass">
+                                    @(e.Activo ? "Activo" : "Inactivo")
+                                </span>
+                            </td>
+                            <td class="col-actions">
+                                <div class="actions">
+
+                                    <button class="icon-btn icon-blue"
+                                            title="Editar"
+                                            @onclick="@(() => Edit(e.IdEmpleado))">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                                             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 20h9" />
+                                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                                        </svg>
+                                    </button>
+
+                                    <button class="icon-btn icon-red"
+                                            title="Eliminar"
+                                            @onclick="@(async () => await ConfirmDelete(e))"
+                                            disabled="@(_deletingId == e.IdEmpleado)">
+                                        @if (_deletingId == e.IdEmpleado)
+                                        {
+                                            <svg width="18" height="18" viewBox="0 0 24 24">
+                                                <circle cx="12" cy="12" r="10" stroke="#c0392b"
+                                                        stroke-width="2" fill="none" />
+                                                <path d="M8 12h8" stroke="#c0392b" stroke-width="2" />
+                                            </svg>
+                                        }
+                                        else
+                                        {
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <polyline points="3 6 5 6 21 6" />
+                                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                                <path d="M10 11v6M14 11v6" />
+                                                <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                                            </svg>
+                                        }
+                                    </button>
+
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="8" style="padding:24px; text-align:center; color:#6E7C87;">
+                            No hay empleados para mostrar.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-bar">
+        <span class="label">Página @(_page) de @_totalPages</span>
+        <div class="pager">
+            <button class="page"
+                    @onclick="@(async () => await ChangePage(_page - 1))"
+                    disabled="@(_page <= 1)">
+                &lt;
+            </button>
+
+            @for (int p = 1; p <= _totalPages; p++)
+            {
+                var pageNum = p;
+                <button class="page @(pageNum == _page ? "active" : "")"
+                        @onclick="@(async () => await ChangePage(pageNum))">
+                    @pageNum
+                </button>
+            }
+
+            <button class="page"
+                    @onclick="@(async () => await ChangePage(_page + 1))"
+                    disabled="@(_page >= _totalPages)">
+                &gt;
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<EmpleadoDto>? _empleados;
+    private int _page = 1;
+    private int _pageSize = 10;
+    private int _totalPages = 1;
+    private bool _loading = false;
+    private int? _deletingId = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await Auth.IsAuthenticatedAsync())
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        await LoadPageAsync(_page);
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        try
+        {
+            _loading = true;
+            _page = Math.Max(1, page);
+
+            var res = await Api.GetAsync<ApiResponse<PagedResult<EmpleadoDto>>>(
+                $"api/Empleados?page={_page}&pageSize={_pageSize}");
+
+            if (res?.Data?.Items != null)
+            {
+                _empleados = res.Data.Items;
+                _page = res.Data.Page;
+                _pageSize = res.Data.PageSize;
+                _totalPages = res.Data.TotalPages;
+            }
+            else
+            {
+                _empleados = new();
+                _totalPages = 1;
+            }
+        }
+        catch
+        {
+            _empleados = new();
+            _totalPages = 1;
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "No se pudieron cargar los empleados.");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Create() => Navigation.NavigateTo("/employees/create");
+    private void Edit(int id) => Navigation.NavigateTo("/employees/edit/" + id);
+
+    private async Task ChangePage(int p)
+    {
+        if (p < 1 || p > _totalPages || p == _page) return;
+        await LoadPageAsync(p);
+    }
+
+    private async Task ConfirmDelete(EmpleadoDto e)
+    {
+        var ok = await JS.InvokeAsync<bool>(
+            "Alerts.confirm",
+            "¿Eliminar empleado?",
+            $"Empleado {e.FullName} será eliminado."
+        );
+
+        if (!ok) return;
+
+        _deletingId = e.IdEmpleado;
+        StateHasChanged();
+        await Delete(e.IdEmpleado);
+        _deletingId = null;
+        StateHasChanged();
+    }
+
+    private async Task Delete(int id)
+    {
+        var resp = await Api.DeleteAsync($"api/Empleados/{id}/activo");
+
+        if (resp.IsSuccessStatusCode)
+        {
+            _empleados = _empleados?.Where(x => x.IdEmpleado != id).ToList();
+            await JS.InvokeVoidAsync("Alerts.success", "Hecho", "Empleado eliminado.");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("Alerts.error", "Error", "No se pudo eliminar el empleado.");
+        }
+    }
+}
