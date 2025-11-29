@@ -1,0 +1,83 @@
+@using System.Collections.Generic
+
+<div class="modal-overlay @(Visible ? "show" : "")" @onclick="OnBackdropClick">
+    <div class="modal-content" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+        <div class="modal-header">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <circle cx="12" cy="16" r="1"></circle>
+                </svg>
+                @Title
+            </h3>
+        </div>
+
+        <div class="modal-body">
+            <p>@Message</p>
+
+            @if (Details?.Count > 0)
+            {
+                <div class="modal-info" aria-live="polite">
+                    @foreach (var d in Details)
+                    {
+                        <div class="modal-info-row">
+                            <div class="modal-info-label">@d.Label</div>
+                            <div class="modal-info-value">@d.Value</div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Warning))
+            {
+                <p style="margin-top:12px; color:#C0392B; font-weight:600;">@Warning</p>
+            }
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="modal-btn modal-btn-cancel" @onclick="Cancel">Cancelar</button>
+            <button type="button" class="modal-btn modal-btn-delete" @onclick="Confirm">@ConfirmButtonText</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Confirmar";
+    [Parameter] public string Message { get; set; } = "¿Deseas continuar con esta acción?";
+    [Parameter] public List<ModalDetail>? Details { get; set; }
+    [Parameter] public string Warning { get; set; } = "Advertencia: Esta acción no se puede deshacer.";
+    [Parameter] public string ConfirmButtonText { get; set; } = "Eliminar";
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private async Task Confirm()
+    {
+        await OnConfirm.InvokeAsync(null);
+        await SetVisible(false);
+    }
+
+    private async Task Cancel()
+    {
+        await SetVisible(false);
+    }
+
+    private async Task SetVisible(bool v)
+    {
+        Visible = v;
+        await VisibleChanged.InvokeAsync(v);
+    }
+
+    private async Task OnBackdropClick()
+    {
+        await SetVisible(false);
+    }
+
+    public class ModalDetail
+    {
+        public string Label { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+}

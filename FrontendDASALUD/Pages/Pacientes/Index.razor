@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 
 @using FrontendDASALUD.Models
+@using FrontendDASALUD.Components
 
 <link href="css/citas.css" rel="stylesheet" />
 
@@ -114,6 +115,20 @@
     </div>
 </div>
 
+@* Modal component instance *@
+<ConfirmDeleteModal @bind-Visible="_showDeleteModal"
+                    Title="¿Eliminar paciente?"
+                    Message="Esta acción eliminará permanentemente el paciente seleccionado del sistema."
+                    Warning="Advertencia: Esta acción no se puede deshacer."
+                    ConfirmButtonText="Eliminar"
+                    OnConfirm="OnConfirmDeletePaciente"
+                    Details="@( _toDeletePaciente != null ? new List<ConfirmDeleteModal.ModalDetail> {
+                        new ConfirmDeleteModal.ModalDetail{ Label = "ID Paciente:", Value = $"#{_toDeletePaciente.IdPaciente:D4}" },
+                        new ConfirmDeleteModal.ModalDetail{ Label = "Nombre:", Value = $"{_toDeletePaciente.Nombres} {_toDeletePaciente.Apellidos}" },
+                        new ConfirmDeleteModal.ModalDetail{ Label = "DUI:", Value = _toDeletePaciente.Dui }
+                    } : null )">
+</ConfirmDeleteModal>
+
 @code {
     private List<PacienteDtos>? _pacientes;
     private int _page = 1;
@@ -122,6 +137,9 @@
     private bool _loading = false;
     private int? _deletingId = null;
     private bool _authenticated = false;
+
+    private bool _showDeleteModal = false;
+    private PacienteDtos _toDeletePaciente = null!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -176,17 +194,21 @@
 
     private async Task ConfirmDelete(PacienteDtos p)
     {
-        var ok = await JS.InvokeAsync<bool>(
-            "Alerts.confirm",
-            "¿Eliminar paciente?",
-            $"Paciente {p.IdPaciente} - {p.Nombres} {p.Apellidos} (DUI {p.Dui})"
-        );
-        if (!ok) return;
-
-        _deletingId = p.IdPaciente;
+        _toDeletePaciente = p;
+        _showDeleteModal = true;
         StateHasChanged();
-        await Delete(p.IdPaciente);
+    }
+
+    private async Task OnConfirmDeletePaciente()
+    {
+        if (_toDeletePaciente == null) return;
+
+        _deletingId = _toDeletePaciente.IdPaciente;
+        StateHasChanged();
+        await Delete(_toDeletePaciente.IdPaciente);
         _deletingId = null;
+        _showDeleteModal = false;
+        _toDeletePaciente = null!;
         StateHasChanged();
     }
 

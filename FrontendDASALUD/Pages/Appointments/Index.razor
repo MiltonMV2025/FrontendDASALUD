@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 
 @using FrontendDASALUD.Models
+@using FrontendDASALUD.Components
 
 <link href="css/citas.css" rel="stylesheet" />
 
@@ -115,6 +116,20 @@
     </div>
 </div>
 
+@* Modal component instance *@
+<ConfirmDeleteModal @bind-Visible="_showDeleteModal"
+                    Title="¿Eliminar cita médica?"
+                    Message="Esta acción eliminará permanentemente la cita seleccionada del sistema."
+                    Warning="Advertencia: Esta acción no se puede deshacer."
+                    ConfirmButtonText="Eliminar"
+                    OnConfirm="OnConfirmDeleteCita"
+                    Details="@( _toDeleteCita != null ? new List<ConfirmDeleteModal.ModalDetail> {
+                        new ConfirmDeleteModal.ModalDetail{ Label = "ID Consulta:", Value = $"#{_toDeleteCita.IdConsulta}" },
+                        new ConfirmDeleteModal.ModalDetail{ Label = "Paciente:", Value = _toDeleteCita.Paciente },
+                        new ConfirmDeleteModal.ModalDetail{ Label = "Fecha:", Value = _toDeleteCita.Fecha.ToString("dd/MM/yyyy") }
+                    } : null )">
+</ConfirmDeleteModal>
+
 @code {
     private List<CitaDto>? _citas;
     private int _page = 1;
@@ -123,6 +138,8 @@
     private bool _loading = false;
     private int? _deletingId = null;
     private bool _authenticated = false;
+    private bool _showDeleteModal = false;
+    private CitaDto? _toDeleteCita = null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -174,23 +191,20 @@
 
     private async Task ConfirmDelete(CitaDto c)
     {
-        var ok = await JS.InvokeAsync<bool>("Alerts.confirm", "¿Eliminar cita?", $"Consulta {c.IdConsulta} - {c.Paciente} ({c.Fecha:dd/MM/yyyy})");
-        if (!ok) return;
-        _deletingId = c.Id;
-        StateHasChanged();
-        await Delete(c.Id);
-        _deletingId = null;
+        _toDeleteCita = c;
+        _showDeleteModal = true;
         StateHasChanged();
     }
 
-    private async Task Delete(int id)
+    private async Task OnConfirmDeleteCita()
     {
+        if (_toDeleteCita == null) return;
         try
         {
-            var resp = await Api.DeleteAsync("api/Citas/" + id);
+            var resp = await Api.DeleteAsync("api/Citas/" + _toDeleteCita.Id);
             if (resp.IsSuccessStatusCode)
             {
-                _citas = _citas?.Where(x => x.Id != id).ToList();
+                _citas = _citas?.Where(x => x.Id != _toDeleteCita.Id).ToList();
                 await JS.InvokeVoidAsync("Alerts.success", "Eliminada", "La cita se eliminó correctamente.");
             }
             else
@@ -202,6 +216,12 @@
         {
             System.Diagnostics.Debug.WriteLine($"Error deleting appointment: {ex.Message}");
             await JS.InvokeVoidAsync("Alerts.error", "Error", "Ocurrió un error eliminando la cita.");
+        }
+        finally
+        {
+            _showDeleteModal = false;
+            _toDeleteCita = null;
+            StateHasChanged();
         }
     }
 

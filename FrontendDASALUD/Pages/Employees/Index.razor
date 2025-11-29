@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 
 @using FrontendDASALUD.Models
+@using FrontendDASALUD.Components
 
 <link href="css/citas.css" rel="stylesheet" />
 
@@ -143,6 +144,20 @@
     </div>
 </div>
 
+@* Modal component instance *@
+<ConfirmDeleteModal @bind-Visible="_showDeleteModal"
+                    Title="¿Eliminar empleado?"
+                    Message="Esta acción eliminará permanentemente al empleado seleccionado del sistema."
+                    Warning="Advertencia: Esta acción no se puede deshacer."
+                    ConfirmButtonText="Eliminar"
+                    OnConfirm="OnConfirmDeleteEmpleado"
+                    Details="@( _toDeleteEmpleado != null ? new List<ConfirmDeleteModal.ModalDetail> {
+                        new ConfirmDeleteModal.ModalDetail{ Label = "ID Empleado:", Value = $"#{_toDeleteEmpleado.IdEmpleado:D4}" },
+                        new ConfirmDeleteModal.ModalDetail{ Label = "Usuario:", Value = _toDeleteEmpleado.Usuario },
+                        new ConfirmDeleteModal.ModalDetail{ Label = "Nombre:", Value = _toDeleteEmpleado.FullName }
+                    } : null )">
+</ConfirmDeleteModal>
+
 @code {
     private List<EmpleadoDto>? _empleados;
     private int _page = 1;
@@ -150,6 +165,10 @@
     private int _totalPages = 1;
     private bool _loading = false;
     private int? _deletingId = null;
+
+    // New fields for modal
+    private bool _showDeleteModal = false;
+    private EmpleadoDto? _toDeleteEmpleado;
 
     protected override async Task OnInitializedAsync()
     {
@@ -207,19 +226,20 @@
 
     private async Task ConfirmDelete(EmpleadoDto e)
     {
-        var ok = await JS.InvokeAsync<bool>(
-            "Alerts.confirm",
-            "¿Eliminar empleado?",
-            $"Empleado {e.FullName} será eliminado."
-        );
+        // Open modal with details
+        _toDeleteEmpleado = e;
+        _showDeleteModal = true;
+    }
 
-        if (!ok) return;
+    private async Task OnConfirmDeleteEmpleado()
+    {
+        if (_toDeleteEmpleado == null) return;
 
-        _deletingId = e.IdEmpleado;
+        _deletingId = _toDeleteEmpleado.IdEmpleado;
         StateHasChanged();
-        await Delete(e.IdEmpleado);
+        await Delete(_toDeleteEmpleado.IdEmpleado);
         _deletingId = null;
-        StateHasChanged();
+        _toDeleteEmpleado = null;
     }
 
     private async Task Delete(int id)
